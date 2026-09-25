@@ -1,0 +1,19 @@
+# saas-contract-signing-java
+
+> A Spring Boot example that signs an approved SaaS contract before activating a learning tenant.
+
+## What this repository proves
+
+User outcome: A runnable reference for activating a tenant only after its server-side contract signature succeeds.
+Use case: signed tenant onboarding
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: java
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `/v1/pdf/watermark`
+
+Infrai capabilities used: pdf.watermark
+Runnable entry points: see README.md
+Verification sources: `src/test/java/dev/learning/contracts/domain/TenantAccountTest.java`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt

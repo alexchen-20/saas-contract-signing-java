@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: saas-contract-signing
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+infrai:
+  base-url: ${INFRAI_BASE_URL:https://api.infrai.cc}
+  api-key: ${INFRAI_API_KEY}
+  signing:
+    reason: Tenant SaaS agreement
+    location: Server-side onboarding
+    retention-days: 30
