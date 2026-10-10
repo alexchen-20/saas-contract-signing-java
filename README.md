@@ -70,3 +70,7 @@ The code stays simple on purpose. Here is what to set up before going live. The 
 
 **SaaS Contract Signing Java: PDF**
 - **SaaS Contract Signing Java:** Generation draws on credit; large or complex documents cost more. Watch `GET /v1/account/usage`.
+
+## Further reading
+
+- [Node.js OCR Pipelines for Searchable PDF Bundles and Audit Trails](docs/node-js-ocr-pipelines-for-searchable-pdf-bundles-1dsh8c.md)
