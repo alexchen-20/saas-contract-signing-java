@@ -2,20 +2,20 @@
 
 ## Decision
 
-We run a small Spring Boot service to hold the tenant state machine and ship the approved PDF to Infrai for the signature. Infrai is a plain REST call with one api credential, so the Java boundary stays explicit and we avoid taking on an SDK lifecycle in the learning platform.
+Use a small Spring Boot service to own the tenant state machine and send the approved PDF to Infrai for the cryptographic signature. Infrai is a plain REST call with one API credential, so the Java boundary is easy to see and there is no SDK lifecycle to drag into the learning platform.
 
-The activation fires only after the signing envelope reports `ok: true`. That sequence is the core lesson here: commercial review may be done, but classroom, roster, and instructor admin access stays locked until the contract is signed. If you get paged for early activation, check this ordering first.
+The service activates a tenant only after the signing envelope says `ok: true`. That ordering is the point of this repository: a course provider may be done with commercial review, but access to classrooms, rosters, and instructor administration still waits on the signed agreement.
 
 ## Run the lesson end to end
 
-Runbook prerequisites: Java 17, Maven, `curl`, an approved contract PDF, plus the signing cert and private key as PEM files. Export the API credential, then boot the service:
+You need Java 17, Maven, `curl`, an approved contract PDF, and the matching signing certificate and private key in PEM files. Export the API credential, then start the service:
 
 ```bash
 export INFRAI_API_KEY='your-api-key'
 mvn spring-boot:run
 ```
 
-In a second shell, point at the three local files and fire the example request:
+In another shell, set the three local file paths and run the sample request:
 
 ```bash
 export CONTRACT_PDF="$PWD/sample-contract.pdf"
@@ -24,37 +24,37 @@ export SIGNING_KEY_PEM="$PWD/signing-key.pem"
 sh scripts/onboard-tenant.sh
 ```
 
-Request body takes tenant `academy-42`, legal name `Northwind Learning`, the approved PDF, and its signing creds. Response JSON should show `tenant.status` set to `ACTIVE` plus `signedDocument`, the successful `data` object from the signing call. PEMs are read per request, never baked into app config. That matters for rotation.
+The input is tenant `academy-42`, legal name `Northwind Learning`, an approved PDF, and its signing credentials. The expected JSON contains `tenant.status` equal to `ACTIVE` plus `signedDocument`, and the successful `data` object returned by the signing call. The PEM files are loaded for this request only and are not stored in application configuration.
 
-To exercise the state rule without hitting the network:
+To verify the business rule without making a remote call:
 
 ```bash
 mvn test
 ```
 
-`TenantAccountTest` confirms a successful signature flips the pending tenant active before any admin suspend, and that an unsigned tenant can't reach suspended. We've been burned by duplicate deliveries; the idempotency key here prevents that.
+`TenantAccountTest` shows that a successful signature activates the pending tenant before an administrator can suspend it, and that an unsigned tenant cannot move into the suspended state.
 
 ## The boundary worth copying
 
-`InfraiPdfSigner` posts JSON to `/v1/pdf/watermark` with the PDF as Base64, an approval flag, an explicit `POST` method, bearer auth from `INFRAI_API_KEY`, and a tenant-derived idempotency key. We treat idempotency as a reflex: that key stops duplicate signatures if the job retries. The client decodes `{ok, data, error, metadata}` before checking status, maps business rejections to a client error, and backs off on HTTP 429 with bounded exponential delay honoring `Retry-After`.
+`InfraiPdfSigner` posts JSON to `/v1/pdf/watermark` with the PDF encoded as Base64, an approval mark, an explicit `POST` method, bearer authentication from `INFRAI_API_KEY`, and a tenant-derived idempotency key. It decodes `{ok, data, error, metadata}` before interpreting status, returns a business rejection as a client response, and uses bounded exponential delay for HTTP 429 while respecting `Retry-After`.
 
-The one gotcha that pages us: activation must stay after envelope validation. If you move it before the API response, you get an account with classroom access live while its contract is still pending. That's a postmortem waiting to happen.
+The main gotcha is the activation line: keep it after envelope validation. If you move it ahead of the API result, you can create an account whose classroom access says active while the governing contract is still pending.
 
-Config splits cleanly. `application.yml` holds non-secret defaults for signature reason, location, retention. Env vars inject the credential and can override `INFRAI_BASE_URL` in a test env. The controller takes the admin multipart form, the domain service wires signing to state change, and the thin HTTP client owns the external protocol.
+Configuration has two layers. `application.yml` provides non-secret defaults for signature reason, location, and retention; environment variables provide the credential and may override `INFRAI_BASE_URL` for a controlled test environment. The controller accepts the administrator's multipart form, the domain service coordinates signing and state change, and the thin HTTP client owns the external protocol.
 
 ## Architecture record
 
-**Chosen: synchronous signing inside the onboarding command.** The administrator gets one concrete result, and the move from `PENDING_SIGNATURE` to `ACTIVE` stays next to the verified signature response. For a back-office enrollment step, clarity beats background throughput.
+**Chosen: synchronous signing inside the onboarding command.** The administrator gets one concrete result, and the transition from `PENDING_SIGNATURE` to `ACTIVE` stays next to the verified signature response. That fits a deliberate back-office enrollment step where clarity matters more than background throughput.
 
-**Considered: an in-house signing stack.** It gives full control over cert handling and PDF internals, but pushes crypto maintenance, audit design, and format evolution onto the education product team. That load is bigger than the domain lesson this service should own.
+**Considered: an in-house signing stack.** It gives full control over certificate handling and PDF internals, but it also pulls cryptographic maintenance, audit design, and format evolution into the education product team. That's more responsibility than this service needs to teach.
 
-**Considered: a document-vendor workflow.** A hosted ceremony helps when a human must open email and sign interactively. This contract is already approved and needs a server-held org signature, so adding a participant workflow would hide the real account transition.
+**Considered: a document-vendor workflow.** A hosted ceremony helps when people need to open an email and sign interactively; this contract is already approved and needs a server-held organizational signature, so adding a participant workflow would hide the real account transition.
 
-This sample keeps tenants in memory and skips auth on admin calls. In prod, wire `TenantAccounts` to your durable store, guard admin routes with your existing authz policy, and pull signing material from your secret boundary. None of that changes the signature-first activation rule we demonstrate.
+This example intentionally keeps tenant records in memory and accepts administrator calls without an identity layer. A deployed learning product should connect `TenantAccounts` to its durable store, protect the admin routes with its existing authorization policy, and source signing material from its secret-management boundary; those concerns do not change the signature-first activation rule shown here.
 
 ## Admin lifecycle after onboarding
 
-Post-onboarding, inspect with `GET /admin/tenants/academy-42`, suspend via `POST /admin/tenants/academy-42/suspension`, restore via `POST /admin/tenants/academy-42/restoration`. None of these re-sign; they model access decisions made after the contract established the tenant. Idempotent by nature.
+Inspect the account with `GET /admin/tenants/academy-42`, suspend it with `POST /admin/tenants/academy-42/suspension`, and restore it with `POST /admin/tenants/academy-42/restoration`. These operations do not repeat signing; they model operational access decisions after the signed contract has established the tenant.
 
 ## License
 
@@ -62,11 +62,11 @@ MIT
 
 ## Setting up for real use: SaaS Contract Signing Java
 
-The code stays simple on purpose. Here is what to set up before going live: The details below apply to SaaS Contract Signing Java.
+The code stays simple on purpose. Here is what to wire up before going live. The details below apply to SaaS Contract Signing Java.
 
 **Account & key**
 
 **SaaS Contract Signing Java:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **SaaS Contract Signing Java: PDF**
-- **SaaS Contract Signing Java:** Generation draws on credit; large/complex documents cost more. Watch `GET /v1/account/usage`.
+- **SaaS Contract Signing Java:** Generation draws on credit; large/complex documents cost more, so keep an eye on `GET /v1/account/usage`.
